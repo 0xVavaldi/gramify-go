@@ -27,10 +27,9 @@ gramify character <input_file> (<output_file>|--stdout) [--min-length=<int>] [--
 gramify charset   <input_file> (<output_file>|--stdout) [--weighted]
 ```
 
-## Build with Docker
+ ## Build with Docker
 
-Cross-compile both the Linux and Windows binaries in containers — no Go toolchain or matching OS needed on the host. A single `docker buildx bake` reads `docker-bake.hcl` and runs both `Dockerfile.linux` and `Dockerfile.windows` in parallel, writing the binaries straight to `bin/` on the host:
-
+Cross-compile both the Linux and Windows binaries in containers This writes the compiled files to `bin/`.
 ```
 cd go_rewrite
 docker buildx bake
@@ -38,7 +37,7 @@ docker buildx bake
 #          ./bin/gramify.exe   (Windows amd64)
 ```
 
-Or via the Makefile (same thing):
+Or via the Makefile:
 
 ```
 make docker            # both targets
@@ -46,7 +45,7 @@ make docker-linux      # Linux only
 make docker-windows    # Windows only
 ```
 
-Or per-Dockerfile directly:
+Using Docker-files:
 
 ```
 docker buildx build -f Dockerfile.linux   --output ./bin .
@@ -88,13 +87,12 @@ hashcat -a1 -m0 <hashlist> n_<output_file> n_<output_file> -j"$ "
 
 ```gramify character <input_file> <output_file> [--min-length=<int>] [--max-length=<int>] [--rolling]```
 
-In this port `--min-length` / `--max-length` do **not** bound the length — they bound how many characters are **removed** to be used with hashcat -a6 and -a7. It essentially removes the first x and last x characters at the same time. For variations of --rolling-start or --rolling-end it will only move the start/end respectively.
+In this port `--min-length` / `--max-length` do **not** bound the length — they bound how many characters are **removed** to be used with hashcat -a6 and -a7. It removes the first x and last x characters simultaneously. For variations of --rolling-start or --rolling-end it will only move the start/end respectively.
 --min-length refers to the minimum number of characters removed. (Default: 1)
 --max-length refers to the maximum number of characters removed. (Default: 4)
 `--max-length 4` means a 4-position hashcat mask (`?a?a?a?a` with -i) reconstructs the analysed plaintexts. The split files are written as `k_start.<output_file>` and `k_end.<output_file>` (there is no `mid_` in this port).
 
---rolling addresses some of the limitations this has. The benefit of having them split is that you have parts that each have a specific function. But sometimes you're not looking for the specific start/end. `--rolling` produces **one** combined file `k_rolling.<output_file>` (start ∪ end) that can easily be fed into both `-a6` and `-a7`. `--stdout` likewise produces the single combined stream. Users frequently prefix or suffix information, so removing the first/last X characters similar to `[[[[` or `]]]]` can have great value if the algorithm is relatively quick to compute (unsalted).
-
+--rolling addresses some of the limitations this has. The benefit of having them split is that each have a specific function. Sometimes you're not looking for the specific start/end. `--rolling` produces **one** combined file `k_rolling.<output_file>` that can easily be fed into both `-a6` and `-a7`; essentially combining `[` and `]` rule effects in combination. `--stdout` likewise produces the single combined stream. Users frequently prefix or suffix information, so removing the first/last X characters similar to `[[[[` or `]]]]` can have great value if the algorithm is relatively quick to compute.
 Some recommended commands would be:
 ```
 gramify character <input_file> <output_file>
@@ -112,7 +110,7 @@ Read more: https://nlp.stanford.edu/IR-book/html/htmledition/k-gram-indexes-for-
 
 ```gramify charset <input_file> <output_file> [--normalize] [--min-occurrence=<int>]```
 
-Charset mode splits cleanly on character-set differences and takes no length parameters. This type of n-gram is focused on character set boundaries. Moving from UPPERCASE to lowercase. From Digits to lowercase or vice versa. This is what we percieve as the most common neurological way to construct passwords and allows you to take passwords and deconstruct them. For example:
+Charset mode splits cleanly on character-set differences and takes no length parameters. This type of 'gram' is focused on character-set boundaries. Moving from UPPERCASE to lowercase, from Digits to lowercase or vice versa. This is what we percieve as the most common neurological way to construct passwords and allows you to take passwords and deconstruct them. For example:
 ```
 password123456 -> [password, 123456]
 PASSword123123magicman -> [PASS, word, 123123, magicman]
@@ -133,7 +131,13 @@ p4ssw0rd -> password -> [password]
 h3ll0    -> hello    -> [hello]
 ```
 
-The reversed mapping is `4@→a`, `6→b`, `<{→c`, `3→e`, `9→g`, `1!→i`, `0→o`, `5$→s`, `7+→t`, `%→x`. The original rule maps both `g→9` and `q→9`; the reverse of `9` is ambiguous, so `9→g` is kept (first occurrence) and `9→q` is dropped.
+The reversed mapping is `4@→a`, `6→b`, `<{→c`, `3→e`, `9→g`, `1!→i`, `0→o`, `5$→s`, `7+→t`, `%→x`. The original rule maps both `g→9` and `q→9`; the reverse of `9` is ambiguous, so `9→g` is kept (first occurrence) and `9→q` is dropped. Three reasons:
+
+- **English frequency.** `g` is roughly 20× more common than `q`, so a random `9` in a real password is far more likely to have been a `g`.
+- **Leet convention.** "9 for g" is the canonical visual substitution (a `9` resembles a lowercase `g`); "9 for q" is a marginal alternative.
+- **Deterministic tiebreaker.** "First occurrence in the rule file" stays stable if the upstream `leetspeak.rule` is re-ordered or extended, so the choice doesn't silently flip.
+
+The goal of `--normalize` is cleaner charset segmentation, not perfect inversion — picking the more probable preimage is the right call.
 
 Because de-leeted noise can be very low quality, `--normalize` raises the default minimum occurrence to **2** (a gram must appear at least twice to be written). Use `--min-occurrence=<int>` to fiddle with the threshold (default 1; `--min-occurrence=1` keeps everything). `--min-occurrence` is available in every mode. Count-based filtering requires aggregation, so `--normalize` / `--min-occurrence > 1` route through the frequency sorter even on `--stdout` (and cannot be combined with `--disable-cache`).
 
