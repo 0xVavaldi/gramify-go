@@ -1,0 +1,21 @@
+# syntax=docker/dockerfile:1
+#
+# Cross-compile a Windows gramify.exe binary and export it via a scratch final
+# stage so `docker buildx build --output ./bin` (or `docker buildx bake`)
+# writes bin/gramify.exe on the host. Runs on a Linux Docker daemon — no
+# Windows host needed (Go cross-compiles natively).
+#
+#   docker buildx build -f Dockerfile.windows --output ./bin .
+#
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS build
+WORKDIR /src
+COPY go.mod ./
+RUN go mod download
+COPY cmd ./cmd
+COPY internal ./internal
+ENV CGO_ENABLED=0 GOOS=windows GOARCH=amd64
+RUN go build -trimpath -ldflags="-s -w" -o /out/gramify.exe ./cmd/gramify
+
+# See Dockerfile.linux for why we export from `scratch`.
+FROM scratch AS export
+COPY --from=build /out/gramify.exe /gramify.exe
