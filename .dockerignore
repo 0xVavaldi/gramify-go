@@ -1,0 +1,8 @@
+# Keep the Docker build context minimal: only the Go sources are needed.
+bin/
+docs/
+Documentation/
+*.md
+.git/
+.gitignore
+.claude/
