@@ -1,0 +1,14 @@
+# build output
+/bin/
+/gramify
+/gramify.exe
+
+# generated gram output
+n_*
+k_start.*
+k_end.*
+k_rolling.*
+c_*
+
+# local documentation (generated)
+/Documentation/

@@ -1,0 +1,22 @@
+## rule: leetspeak reversed (de-leet / normalize)
+## source: hashcat-7.1/rules/leetspeak.rule, each `sXY` reversed to `sYX`
+## purpose: map leet characters back to their plain letter
+## example: j0hn ---> john
+## note: leetspeak.rule maps both g->9 (sg9) and q->9 (sq9). The reverse is
+##       ambiguous for '9'; we keep 9->g (first occurrence) and drop 9->q.
+
+s4a
+s@a
+s6b
+s<c
+s{c
+s3e
+s9g
+s1i
+s!i
+s0o
+s5s
+s$s
+s7t
+s+t
+s%x
