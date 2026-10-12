@@ -12,6 +12,7 @@ import (
 	"runtime/debug"
 	"runtime/pprof"
 	"strings"
+	"unicode"
 
 	"github.com/Vavaldi/gramify/internal/cgram"
 	"github.com/Vavaldi/gramify/internal/cli"
@@ -306,8 +307,12 @@ func run(cfg *cli.Config, budget membudget.Budget) error {
 		if err != nil {
 			return err
 		}
+		emit := sk.add
+		if cfg.Mixed {
+			emit = mixedEmit(emit)
+		}
 		err = cgram.Generate(cfg.Input, budget.Read, onRead, cfg.Normalize, cfg.MinLength,
-			cfg.Purist, cfg.SubLength, sk.add)
+			cfg.Purist, cfg.SubLength, emit)
 		finish()
 		if err != nil {
 			sk.cancel()
@@ -427,6 +432,28 @@ func outPath(cfg *cli.Config, filePath string) string {
 		return ""
 	}
 	return filePath
+}
+
+// mixedEmit wraps an emit function to also emit the lowercased version of any
+// segment that contains mixed-case letters (both upper and lower).
+func mixedEmit(emit func(string) error) func(string) error {
+	return func(s string) error {
+		if err := emit(s); err != nil {
+			return err
+		}
+		hasUpper, hasLower := false, false
+		for _, r := range s {
+			if unicode.IsUpper(r) {
+				hasUpper = true
+			} else if unicode.IsLower(r) {
+				hasLower = true
+			}
+			if hasUpper && hasLower {
+				return emit(strings.ToLower(s))
+			}
+		}
+		return nil
+	}
 }
 
 // maxTemplateParts caps the segments per line that --beta-template buckets. A

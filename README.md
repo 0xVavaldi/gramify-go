@@ -14,7 +14,6 @@ Those unfamiliar with the term will most easily understand it as the n words tha
 ## Build
 
 ```
-cd go_rewrite
 make build
 # or:
 go build -o bin/gramify ./cmd/gramify
@@ -91,7 +90,7 @@ Read more: https://nlp.stanford.edu/IR-book/html/htmledition/k-gram-indexes-for-
 
 ## Charset n-grams
 
-```gramify charset <input_file> <output_file> [--normalize] [--min-occurrence=<int>]```
+```gramify charset <input_file> <output_file> [--normalize] [--mixed] [--min-occurrence=<int>]```
 
 Charset mode splits cleanly on character-set differences and (apart from `--normalize` / `--min-occurrence`) takes no length parameters.
 This type of n-gram is focused on character set boundaries. Moving from UPPERCASE to lowercase. From Digits to lowercase or vice versa. This way you're able to take the passwords:
