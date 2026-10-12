@@ -49,7 +49,7 @@ func TestGenerateMatchesBruteForce(t *testing.T) {
 		path := writeFile(t, tokens, c.perLine)
 		var got []string
 		// tiny budget forces multi-block reads so windows span block boundaries
-		if err := Generate(path, 1<<20, nil, c.min, c.max, false, func(s string) error {
+		if err := Generate(path, 1<<20, nil, c.min, c.max, func(s string) error {
 			got = append(got, s)
 			return nil
 		}); err != nil {
@@ -65,34 +65,13 @@ func TestGenerateMatchesBruteForce(t *testing.T) {
 }
 
 func TestGenerateRejectsBadArgs(t *testing.T) {
-	if err := Generate("x", 1<<20, nil, 0, 2, false, func(string) error { return nil }); err == nil {
+	if err := Generate("x", 1<<20, nil, 0, 2, func(string) error { return nil }); err == nil {
 		t.Error("expected error for min<1")
 	}
-	if err := Generate("x", 1<<20, nil, 3, 2, false, func(string) error { return nil }); err == nil {
+	if err := Generate("x", 1<<20, nil, 3, 2, func(string) error { return nil }); err == nil {
 		t.Error("expected error for max<min")
 	}
-	if err := Generate("x", 1<<20, nil, 1, 2, false, nil); err == nil {
+	if err := Generate("x", 1<<20, nil, 1, 2, nil); err == nil {
 		t.Error("expected error for nil emit")
-	}
-}
-
-// stripSpecial deletes non-letter/digit runes and treats any whitespace as
-// a token separator, gluing surrounding chars across punctuation.
-func TestGenerateStripSpecial(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "in.txt")
-	if err := os.WriteFile(p, []byte("Don't go!\nuser-agent: Mozilla/5.0\ncafé (résumé)\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	var got []string
-	if err := Generate(p, 1<<20, nil, 1, 1, true, func(s string) error {
-		got = append(got, s)
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	// Tokens stream across lines; punctuation is glued, whitespace separates.
-	want := []string{"Dont", "go", "useragent", "Mozilla50", "café", "résumé"}
-	if strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Errorf("got %v, want %v", got, want)
 	}
 }

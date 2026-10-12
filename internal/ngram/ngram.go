@@ -6,25 +6,9 @@ package ngram
 import (
 	"errors"
 	"strings"
-	"unicode"
 
 	"github.com/Vavaldi/gramify/internal/source"
 )
-
-// stripSpecialMap is the Unicode-aware "delete special characters" rune mapping:
-// letters and digits pass through unchanged, any whitespace becomes ASCII space
-// (so tabs/CRs act as token separators rather than glue), and every other rune
-// is dropped — so "Don't go!" -> "Dont go", "state-of-the-art" -> "stateoftheart".
-func stripSpecialMap(r rune) rune {
-	switch {
-	case unicode.IsLetter(r), unicode.IsDigit(r):
-		return r
-	case unicode.IsSpace(r):
-		return ' '
-	default:
-		return -1 // drop
-	}
-}
 
 // Generate reads inputPath, splits every line on single spaces (dropping empty
 // tokens, mirroring the Python `filter(None, split(" "))`), and emits every
@@ -40,20 +24,16 @@ func stripSpecialMap(r rune) rune {
 //
 // Args:
 //
-//	inputPath:    the file to read.
-//	readBudget:   read-ahead buffer ceiling in bytes (see source.LinesBounded).
-//	onRead:       optional per-block byte progress callback; may be nil.
-//	min, max:     inclusive window-length bounds in words.
-//	stripSpecial: when true, drop every rune that is not a Unicode letter,
-//	              digit, or whitespace before tokenising (e.g. "Don't go!" ->
-//	              "Dont go"); whitespace is normalised to a single space so
-//	              tabs/CRs act as separators instead of glue.
-//	emit:         receives each generated gram; its first error aborts.
+//	inputPath:  the file to read.
+//	readBudget: read-ahead buffer ceiling in bytes (see source.LinesBounded).
+//	onRead:     optional per-block byte progress callback; may be nil.
+//	min, max:   inclusive window-length bounds in words.
+//	emit:       receives each generated gram; its first error aborts.
 //
 // Returns:
 //
 //	the first read or emit error; nil on success.
-func Generate(inputPath string, readBudget int64, onRead func(int64), min, max int, stripSpecial bool, emit func(string) error) error {
+func Generate(inputPath string, readBudget int64, onRead func(int64), min, max int, emit func(string) error) error {
 	// precondition guards (NASA P10 rule 7: validate parameters)
 	if emit == nil {
 		return errors.New("ngram.Generate: nil emit")
@@ -94,9 +74,6 @@ func Generate(inputPath string, readBudget int64, onRead func(int64), min, max i
 	}
 
 	err := source.LinesBounded(inputPath, readBudget, onRead, func(line string) error {
-		if stripSpecial {
-			line = strings.Map(stripSpecialMap, line)
-		}
 		for _, tok := range strings.Split(line, " ") { // bounded by line length
 			if tok == "" {
 				continue

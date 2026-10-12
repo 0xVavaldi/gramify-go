@@ -24,7 +24,7 @@ func BenchmarkGenerate(b *testing.B) {
 	b.ResetTimer()
 	for it := 0; it < b.N; it++ {
 		var count int64
-		if err := Generate(path, 8<<20, nil, 1, 4, false, func(string) error { count++; return nil }); err != nil {
+		if err := Generate(path, 8<<20, nil, 1, 4, func(string) error { count++; return nil }); err != nil {
 			b.Fatal(err)
 		}
 	}

@@ -1,21 +1,19 @@
 # Gramify (Go)
 
 Gramify is an analysis tool built with the purpose of enhancing attacks on complex passwords through the use of n-grams.
-Gramify offers three types of 'gram' analysis.
+Gramify offers three types of n-gram analysis
 - Word
 - Character
-- Character sets
+- Charset
 
-In the computer science field people learn about n-grams which places a correlation on words that appear together frequently. For example: "I am doing well" consists of 4 words: ["I", "am", "doing", "well"]. This 4 word n-gram can be split into 2 word n-grams as well: ["I am", "am doing", "doing well"] correlating the 2 words that appear beside eachother until they hit either the start ("I") or the end ("well"). This tool not only highlights the correlation between words, but also between characters or character-set changes. `applePOTATO123` for example could be split into `["apple, "POTATO", "123"]`.
-These each perform n-grams at their respective levels. This is a Go rewrite of the original `gramify.py` and focused on the core word/character/charset functionality with built-in results.
+These each perform n-grams at their respective levels. This is a Go rewrite of the original `gramify.py` and focused on the core word/character/charset functionality with built-in results. The original extra features (`--ngram-more`, `--filter`, `--mixed`, `--cgram-rulify`, `--filter-combo`) are intentionally **not** part of this port. A deep per-function analysis of the original Python lives in [`docs/ANALYSIS.md`](docs/ANALYSIS.md).
 
 ## What is an n-gram?
-Those unfamiliar with the term will most easily understand it as the n words that follow each other naturally. At a 'word level' the sentence: "I am writing a program" can be split at 2-gram level into: `["I am", "am writing", "writing a", "a program"]`. at 3-gram level into: `["I am writing", "am writing a", "writing a program"]`. This can also be done at a character level for example with "abc defg" into the 3-gram `["abc", "bc ", "c d", " de", "def", "efg"]`. Logically you can imagine that using this on books, or song lyrics can turn into a powerful analytical form where you can extract quotes or find words commonly used together such as the words: "I am", "He is" instead of: "capricorn icecream". At scale this can be used to find the most frequently used word-combinations in thousands of books, movies, or song lyrics.
+Those unfamiliar with the term will most easily understand it as the n words that follow each other naturally. At a word level the sentence: "I am writing a program" can be split at 2-gram level into: `["I am", "am writing", "writing a", "a program"]`. at 3-gram level into: `["I am writing", "am writing a", "writing a program"]`. This can also be done at a character level for example with "abc defg" into the 3-gram `["abc", "bc ", "c d", " de", "def", "efg"]`. Logically you can imagine that using this on books, or song lyrics can turn into a powerful analytical form where you can extract quotes or find words commonly used together such as the words: "I am", "He is" instead of: "capricorn icecream".
 
-## Quick start / build
+## Build
 
 ```
-cd go_rewrite
 make build
 # or:
 go build -o bin/gramify ./cmd/gramify
@@ -27,36 +25,11 @@ gramify character <input_file> (<output_file>|--stdout) [--min-length=<int>] [--
 gramify charset   <input_file> (<output_file>|--stdout) [--weighted]
 ```
 
- ## Build with Docker
-
-Cross-compile both the Linux and Windows binaries in containers This writes the compiled files to `bin/`.
-```
-cd go_rewrite
-docker buildx bake
-# produces ./bin/gramify       (Linux  amd64)
-#          ./bin/gramify.exe   (Windows amd64)
-```
-
-Or via the Makefile:
-
-```
-make docker            # both targets
-make docker-linux      # Linux only
-make docker-windows    # Windows only
-```
-
-Using Docker-files:
-
-```
-docker buildx build -f Dockerfile.linux   --output ./bin .
-docker buildx build -f Dockerfile.windows --output ./bin .
-```
-
 ## Word n-grams
 
 ```gramify word <input_file> <output_file> [--min-length=<int>] [--max-length=<int>]```
---min-length refers to the minimum amount of words that ngrams should be.
---max-length refers to the maximum amount of words that ngrams should be.
+--min-length refers to the minimum amount of words that ngrams should be. Ergo. at least `<int>` words (Default: 1)
+--max-length refers to the maximum amount of words that ngrams should be. Ergo. at least `<int>` words (Default: 10)
 
 Expecting long quotes or lyrics? Increase the --max-length, the penalty is often minor.
 Example of input file format:
@@ -71,7 +44,9 @@ Feeling like I'm in heaven
 It's like I'm in heaven
 It's like I'm in heaven, ooh we oh
 ```
-Output is written to `n_<output_file>`. The output is sorted by occurrence with the most frequent combinations.
+
+Output is written to `n_<output_file>`. Unlike the original, it no longer contains raw duplicates: the output is sorted by occurrence with the most frequent grams (such as the word "It's" and "I'm" as 1-gram or "I'm in heaven" as 3-gram) at the top, so you can simply HEAD the output file if the data is too much. See [Sorting & output](#sorting--output).
+
 Read more: https://en.wikipedia.org/wiki/N-gram. 
 
 Some recommended commands would be:
@@ -87,30 +62,38 @@ hashcat -a1 -m0 <hashlist> n_<output_file> n_<output_file> -j"$ "
 
 ```gramify character <input_file> <output_file> [--min-length=<int>] [--max-length=<int>] [--rolling]```
 
-In this port `--min-length` / `--max-length` do **not** bound the length — they bound how many characters are **removed** to be used with hashcat -a6 and -a7. It removes the first x and last x characters simultaneously. For variations of --rolling-start or --rolling-end it will only move the start/end respectively.
+In this port `--min-length` / `--max-length` do **not** bound the gram length — they bound **how many characters are removed** from the analysed plaintext. For a line of length `n` and each `k` between `--min-length` and `--max-length` (with `k < n`):
+
+- **k_start** = the first `n-k` characters (the last `k` removed). Ideal with hashcat `-a6` as the input dictionary with a `k`-position mask appended to it.
+- **k_end** = the last `n-k` characters (the first `k` removed). Ideal with hashcat `-a7` as the end of the word with a `k`-position mask prepended to it.
+
 --min-length refers to the minimum number of characters removed. (Default: 1)
 --max-length refers to the maximum number of characters removed. (Default: 4)
-`--max-length 4` means a 4-position hashcat mask (`?a?a?a?a` with -i) reconstructs the analysed plaintexts. The split files are written as `k_start.<output_file>` and `k_end.<output_file>` (there is no `mid_` in this port).
 
---rolling addresses some of the limitations this has. The benefit of having them split is that each have a specific function. Sometimes you're not looking for the specific start/end. `--rolling` produces **one** combined file `k_rolling.<output_file>` that can easily be fed into both `-a6` and `-a7`; essentially combining `[` and `]` rule effects in combination. `--stdout` likewise produces the single combined stream. Users frequently prefix or suffix information, so removing the first/last X characters similar to `[[[[` or `]]]]` can have great value if the algorithm is relatively quick to compute.
+So `--max-length 4` means a 4-position hashcat mask (`?a?a?a?a`) reconstructs the analysed plaintext. The split files are written as `k_start.<output_file>` and `k_end.<output_file>` (there is no `mid_` in this port).
+
+--rolling addresses some of the limitations this has. The benefit of having them split is that you have parts that each have a specific function. But sometimes you're not looking for the specific start/end. `--rolling` produces **one** combined file `k_rolling.<output_file>` (start ∪ end) that can easily be fed into both `-a6` and `-a7`. `--stdout` likewise produces the single combined stream.
+
 Some recommended commands would be:
 ```
 gramify character <input_file> <output_file>
+gramify character <input_file> <output_file> --max-length=8
 gramify character <input_file> <output_file> --rolling
 
-hashcat -a6 -m0 <hashlist> k_start.<output_file> -1 ?d?s ?1?1?1?1?1?1 -i
-hashcat -a7 -m0 <hashlist> -1 ?d?s ?1?1?1?1?1 k_end.<output_file> -i
+hashcat -a6 -m0 <hashlist> k_start.<output_file> ?a?a?a?a -i
+hashcat -a7 -m0 <hashlist> ?a?a?a?a k_end.<output_file> -i
 hashcat -a1 -m0 <hashlist> k_start.<output_file> k_end.<output_file>
-hashcat -a6 -m0 <hashlist> k_rolling.<output_file> -1 ?d?s ?1?1?1?1?1?1 -i
-hashcat -a7 -m0 <hashlist> -1 ?d?s ?1?1?1?1?1 k_rolling.<output_file> -i
+hashcat -a6 -m0 <hashlist> k_rolling.<output_file> ?a?a?a?a -i
+hashcat -a7 -m0 <hashlist> ?a?a?a?a k_rolling.<output_file> -i
 ```
 Read more: https://nlp.stanford.edu/IR-book/html/htmledition/k-gram-indexes-for-wildcard-queries-1.html
 
 ## Charset n-grams
 
-```gramify charset <input_file> <output_file> [--normalize] [--min-occurrence=<int>]```
+```gramify charset <input_file> <output_file> [--normalize] [--mixed] [--min-occurrence=<int>]```
 
-Charset mode splits cleanly on character-set differences and takes no length parameters. This type of 'gram' is focused on character-set boundaries. Moving from UPPERCASE to lowercase, from Digits to lowercase or vice versa. This is what we percieve as the most common neurological way to construct passwords and allows you to take passwords and deconstruct them. For example:
+Charset mode splits cleanly on character-set differences and (apart from `--normalize` / `--min-occurrence`) takes no length parameters.
+This type of n-gram is focused on character set boundaries. Moving from UPPERCASE to lowercase. From Digits to lowercase or vice versa. This way you're able to take the passwords:
 ```
 password123456 -> [password, 123456]
 PASSword123123magicman -> [PASS, word, 123123, magicman]
@@ -131,13 +114,7 @@ p4ssw0rd -> password -> [password]
 h3ll0    -> hello    -> [hello]
 ```
 
-The reversed mapping is `4@→a`, `6→b`, `<{→c`, `3→e`, `9→g`, `1!→i`, `0→o`, `5$→s`, `7+→t`, `%→x`. The original rule maps both `g→9` and `q→9`; the reverse of `9` is ambiguous, so `9→g` is kept (first occurrence) and `9→q` is dropped. Three reasons:
-
-- **English frequency.** `g` is roughly 20× more common than `q`, so a random `9` in a real password is far more likely to have been a `g`.
-- **Leet convention.** "9 for g" is the canonical visual substitution (a `9` resembles a lowercase `g`); "9 for q" is a marginal alternative.
-- **Deterministic tiebreaker.** "First occurrence in the rule file" stays stable if the upstream `leetspeak.rule` is re-ordered or extended, so the choice doesn't silently flip.
-
-The goal of `--normalize` is cleaner charset segmentation, not perfect inversion — picking the more probable preimage is the right call.
+The reversed mapping is `4@→a`, `6→b`, `<{→c`, `3→e`, `9→g`, `1!→i`, `0→o`, `5$→s`, `7+→t`, `%→x`. The original rule maps both `g→9` and `q→9`; the reverse of `9` is ambiguous, so `9→g` is kept (first occurrence) and `9→q` is dropped.
 
 Because de-leeted noise can be very low quality, `--normalize` raises the default minimum occurrence to **2** (a gram must appear at least twice to be written). Use `--min-occurrence=<int>` to fiddle with the threshold (default 1; `--min-occurrence=1` keeps everything). `--min-occurrence` is available in every mode. Count-based filtering requires aggregation, so `--normalize` / `--min-occurrence > 1` route through the frequency sorter even on `--stdout` (and cannot be combined with `--disable-cache`).
 

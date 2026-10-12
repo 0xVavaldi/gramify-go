@@ -61,17 +61,16 @@ type Config struct {
 	// sanitised) and is incompatible with --stdout.
 	BetaTemplate bool
 
+	// Mixed (charset mode only) additionally emits the lowercased version of
+	// every segment that contains mixed-case letters. Incompatible with
+	// --purist (which splits on case, so segments are single-case) and
+	// --beta-template.
+	Mixed bool
+
 	// CaseSensitive (charset mode only) disables the default case-insensitive
 	// frequency grouping, restoring exact-case counting in the freq-sorted
 	// output. The other modes are always case-sensitive.
 	CaseSensitive bool
-
-	// StripSpecial (word mode only) drops every input rune that is not a Unicode
-	// letter, digit, or whitespace before tokenising — so "Don't go!" becomes
-	// "Dont go" and "user-agent: Mozilla/5.0" becomes "useragent Mozilla50".
-	// Whitespace (tab/CR/etc.) is normalised to a single space so it still acts
-	// as a token separator instead of glue.
-	StripSpecial bool
 
 	// MinFreq drops grams occurring fewer than this many times. It requires
 	// aggregation, so it applies to file output only, defaulting to 2 (drop
@@ -109,9 +108,9 @@ const Version = "2.0-alpha.01"
 const Usage = `gramify - n-gram / k-gram / c-gram generator (Go)
 
 Usage:
-  gramify word      <input_file> [<output_file>|--stdout] [--strip-special] [--min-length=N] [--max-length=N] [--min-freq=N] [--weighted]
+  gramify word      <input_file> [<output_file>|--stdout] [--min-length=N] [--max-length=N] [--min-freq=N] [--weighted]
   gramify character <input_file> [<output_file>|--stdout] [--min-length=N] [--max-length=N] [--min-freq=N] [--rolling|--rolling-start|--rolling-end] [--weighted]
-  gramify charset   <input_file> [<output_file>|--stdout] [--normalize] [--purist] [--substitution-length=N] [--case-sensitive] [--min-length=N] [--min-freq=N] [--weighted]
+  gramify charset   <input_file> [<output_file>|--stdout] [--normalize] [--mixed] [--purist] [--substitution-length=N] [--case-sensitive] [--min-length=N] [--min-freq=N] [--weighted]
   gramify charset   <input_file> <output_file> --beta-template [--normalize] [--purist] [--substitution-length=N] [--case-sensitive] [--min-freq=N] [--weighted]
   gramify (-h | --help)
 
@@ -124,11 +123,6 @@ Options:
                    character: max characters removed (default 4).
                    In character mode --max-length 4 means a 4-position hashcat
                    mask (?a?a?a?a) reconstructs the analysed plaintext.
-  --strip-special  word only: drop every input rune that is not a Unicode
-                   letter, digit, or whitespace before tokenising. Surrounding
-                   characters glue (so "Don't go!" -> "Dont go" and
-                   "user-agent: Mozilla/5.0" -> "useragent Mozilla50").
-                   Whitespace is preserved as a token separator.
   --rolling        character only: emit one combined stream (start + end)
                    usable for both -a6 and -a7 instead of split files.
                    Enabled automatically with --stdout (it can't be split).
@@ -138,6 +132,11 @@ Options:
                    (for hashcat -a7). Like --rolling but the end half alone.
   --normalize      charset only: de-leetspeak each line before splitting
                    (reverses hashcat leetspeak.rule).
+  --mixed          charset only: for each segment that contains mixed-case
+                   letters, also emit the all-lowercase version. Useful for
+                   extracting base words without case variation, which can then
+                   be combined with case-toggling rules in hashcat.
+                   Incompatible with --purist and --beta-template.
   --purist         charset only: strict per-class splitting. Treat uppercase and
                    lowercase as separate classes and split on every class change
                    (no insertion gluing, no camelCase sub-words). The default
@@ -336,14 +335,14 @@ func scanArgs(c *Config, args []string) ([]string, seen, error) {
 			}
 		case a == "--normalize":
 			c.Normalize = true
+		case a == "--mixed":
+			c.Mixed = true
 		case a == "--purist":
 			c.Purist = true
 		case a == "--beta-template":
 			c.BetaTemplate = true
 		case a == "--case-sensitive":
 			c.CaseSensitive = true
-		case a == "--strip-special":
-			c.StripSpecial = true
 		case strings.HasPrefix(a, "--substitution-length"):
 			i, err = intFlag(i, "--substitution-length", &c.SubLength, &set.subLen)
 		case strings.HasPrefix(a, "--min-freq"):
@@ -427,6 +426,15 @@ func validate(c *Config, set seen) error {
 	if c.Normalize && c.Mode != ModeCharset {
 		return errors.New("--normalize is only valid in charset mode")
 	}
+	if c.Mixed && c.Mode != ModeCharset {
+		return errors.New("--mixed is only valid in charset mode")
+	}
+	if c.Mixed && c.Purist {
+		return errors.New("--mixed and --purist are mutually exclusive (purist splits on case, so segments are single-case)")
+	}
+	if c.Mixed && c.BetaTemplate {
+		return errors.New("--mixed cannot be combined with --beta-template")
+	}
 	if c.Purist && c.Mode != ModeCharset {
 		return errors.New("--purist is only valid in charset mode")
 	}
@@ -438,9 +446,6 @@ func validate(c *Config, set seen) error {
 	}
 	if c.CaseSensitive && c.Mode != ModeCharset {
 		return errors.New("--case-sensitive is only valid in charset mode (other modes are always case-sensitive)")
-	}
-	if c.StripSpecial && c.Mode != ModeWord {
-		return errors.New("--strip-special is only valid in word mode")
 	}
 	if c.BetaTemplate {
 		if c.Mode != ModeCharset {
